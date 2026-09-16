@@ -1,5 +1,6 @@
 # 这是一个示例 Python 脚本。
 import sys
+import traceback
 
 # 按 Shift+F10 执行或将其替换为您的代码。
 # 按 双击 Shift 在所有地方搜索类、文件、工具窗口、操作和设置。
@@ -10,9 +11,10 @@ import os
 import time
 from bs4 import BeautifulSoup
 import requests
+import pymysql
 STATE_FILE = "boss_state.json"
 
-
+captured_jobs = []
 def load_headers_from_file(file_path):
     """
     读取文本文件并解析为字典
@@ -44,26 +46,27 @@ def load_headers_from_file(file_path):
 
 
 def handle_request(request):
+    pass
     # 过滤 XHR 和 Fetch 请求（即常见的 API 请求）
-    if request.resource_type in ["xhr", "fetch"]:
+    #if request.resource_type in ["xhr", "fetch"]:
         #print(f"🔗 捕获到 API 请求: {request.method} {request.url}")
 
         # 获取请求头
-        if "joblist" in request.url:
-          headerStr = ""
-          headers = request.headers
-          for key, value in headers.items():
-              headerStr += "{key}:{value}\n".format(key=key, value=value)
+        #if "joblist" in request.url:
+        #  headerStr = ""
+        #  headers = request.headers
+        #  for key, value in headers.items():
+        #      headerStr += "{key}:{value}\n".format(key=key, value=value)
           #print(type(headers))
           #print(f"📋 请求头: {headers}")
-          with open("joblistreq.txt", "w", encoding="utf-8") as file:
-              file.write(headerStr)
-          post_data = request.post_data
-          if post_data:
+        #  with open("joblistreq.txt", "w", encoding="utf-8") as file:
+        #      file.write(headerStr)
+        #  post_data = request.post_data
+        #  if post_data:
               #print(type(post_data))
               #print(f"📦 请求体(Payload): {post_data}")
-              with open("joblistresponse.txt", "w", encoding="utf-8") as file1:
-                  file1.write(post_data)
+         #     with open("joblistresponse.txt", "w", encoding="utf-8") as file1:
+         #         file1.write(post_data)
 
 
         # 获取 POST 请求体 (Payload)
@@ -71,16 +74,49 @@ def handle_request(request):
 
 # 2. 监听响应（获取后台返回的数据）
 def handle_response(response):
-    if response.request.resource_type in ["xhr", "fetch"]:
-        # 只处理成功的请求
-        if response.status == 200:
-            print(f"✅ 收到响应: {response.url}")
+    # 拦截 Boss直聘 的职位列表 API
+    if "wapi/zpgeek/search/joblist" in response.url:
+        #print(f"[捕获接口] {response.status} -> {response.url}")
+
+        # 确保请求成功且返回的是 JSON 格式
+        if response.status == 200 and "application/json" in response.headers.get("content-type", ""):
             try:
-                # 尝试将返回内容解析为 JSON
-                json_data = response.json()
-                print(f"📊 返回的 JSON 数据: {json_data}")
+                data = response.json()
+                job_list = data.get("zpData", {}).get("jobList", [])
+                for job in job_list:
+                    job_info = {
+
+                        "encrypt_job_id": job.get("encryptJobId"),
+                        "job_name": job.get("jobName"),
+                        "brand_name": job.get("brandName"),
+                        "skills": ",".join(job.get("skills", [])),
+                        "salary_desc": job.get("salaryDesc"),
+                        "city_name": job.get("cityName"),
+                        "boss_name": job.get("bossName"),
+                        "boss_title": job.get("bossTitle"),
+                        "encrypt_boss_id": job.get("encryptBossId"),
+                        "boss_online": job.get("bossOnline"),
+                        "job_degree": job.get("jobDegree"),
+                        "brand_scale_name": job.get("brandScaleName"),
+                        "encrypt_brand_id": job.get("encryptBrandId"),
+                        "brand_industry": job.get("brandIndustry"),
+                    }
+                    captured_jobs.append(job_info)
+                    print(f"  -> 获取到岗位: {job_info['job_name']} | {job_info['salary_desc']}")
+
             except Exception as e:
-                print("该请求返回的不是 JSON 格式")
+                print(f"解析 JSON 失败: {e}")
+                traceback.print_exc()
+    #if response.request.resource_type in ["xhr", "fetch"]:
+        # 只处理成功的请求
+    #    if response.status == 200:
+    #        print(f"✅ 收到响应: {response.url}")
+    #        try:
+                # 尝试将返回内容解析为 JSON
+    #            json_data = response.json()
+    #            print(f"📊 返回的 JSON 数据: {json_data}")
+    #        except Exception as e:
+    #            print("该请求返回的不是 JSON 格式")
 
 
 def save_boss_login():
@@ -167,6 +203,57 @@ if __name__ == "__main__2":
          print(f"薪资: {salary}")
          print(f"公司: {company}")
 
+def insertJobData():
+    conn = pymysql.connect(host='192.168.154.128', user='cyd', password='Cyd!123456789', database='collect-data', charset='utf8mb4')
+    cursor = conn.cursor()
+
+    columns = [
+        'encrypt_job_id', 'job_name', 'brand_name', 'salary_desc',
+        'skills', 'city_name', 'boss_name', 'boss_title',
+        'encrypt_boss_id', 'boss_online', 'job_degree',
+        'brand_scale_name', 'encrypt_brand_id', 'brand_industry'
+    ]
+
+    # 使用列表推导式，将字典列表转换为元组列表
+    tuple_list = [tuple(job.get(col) for col in columns) for job in captured_jobs]
+
+    sql = """
+            INSERT INTO boss_job_details 
+            (encrypt_job_id, job_name, brand_name, salary_desc, skills, city_name, boss_name, boss_title, encrypt_boss_id, boss_online, job_degree, brand_scale_name, encrypt_brand_id, brand_industry) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE 
+                job_name = VALUES(job_name),
+                brand_name = VALUES(brand_name),
+                salary_desc = VALUES(salary_desc),
+                skills = VALUES(skills),
+                city_name = VALUES(city_name),
+                boss_name = VALUES(boss_name),
+                boss_title = VALUES(boss_title),
+                encrypt_boss_id = VALUES(encrypt_boss_id),
+                boss_online = VALUES(boss_online),
+                job_degree = VALUES(job_degree),
+                brand_scale_name = VALUES(brand_scale_name),
+                encrypt_brand_id = VALUES(encrypt_brand_id),
+                brand_industry = VALUES(brand_industry)
+        """
+    batch_size = 1000  # 每批插入 1000 条
+    try:
+        for i in range(0, len(tuple_list), batch_size):
+            batch = tuple_list[i:i + batch_size]
+            cursor.executemany(sql, batch)
+
+        # 所有批次执行完毕后，统一提交一次事务
+        conn.commit()
+        print(f"成功插入 {len(captured_jobs)} 条数据")
+    except Exception as e:
+        traceback.print_exc()
+        conn.rollback()
+        print("插入失败，已回滚：", e)
+    finally:
+        cursor.close()
+        conn.close()
+
+
 
 if __name__ == "__main__":
     PROFILE_DIR = "./boss_profile"
@@ -186,7 +273,7 @@ if __name__ == "__main__":
     page.wait_for_load_state("domcontentloaded")
 
     page.on("request", handle_request)
-    #page.on("response", handle_response)
+    page.on("response", handle_response)
 
     # 等待登录按钮出现并点击
     #page.wait_for_selector("a.header-login-btn", state="visible")
@@ -216,8 +303,12 @@ if __name__ == "__main__":
         file.write(final_content_step2)
 
     time.sleep(5)
+    #武汉
     page.wait_for_selector('a[ka="city-sites-101200100"]', state="visible")
     page.click('a[ka="city-sites-101200100"]')
+    #广州
+    #page.wait_for_selector('a[ka="city-sites-101280100"]', state="visible")
+    #page.click('a[ka="city-sites-101280100"]')
 
     time.sleep(5)
     final_content_step3 = page.content()
@@ -233,7 +324,7 @@ if __name__ == "__main__":
 
     # 1. 获取当前网页的完整总高度（画卷的长度）
     last_height = page.evaluate("document.body.scrollHeight")
-    
+
 
     while True:
         # 2. 每次向下滚动“一屏”的距离（窗户的高度）
@@ -256,11 +347,13 @@ if __name__ == "__main__":
 
     print("✅ 已滚动至页面最底部")
 
-    time.sleep(5)
-    final_content_step4 = page.content()
+    time.sleep(20)
+
+    insertJobData()
+    #final_content_step4 = page.content()
     #print(final_content_step4)
-    with open("boss_job_page_step4.html", "w", encoding="utf-8") as file:
-        file.write(final_content_step4)
+    #with open("boss_job_page_step4.html", "w", encoding="utf-8") as file:
+    #    file.write(final_content_step4)
 
 
 
