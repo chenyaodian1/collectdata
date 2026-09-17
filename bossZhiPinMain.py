@@ -317,7 +317,7 @@ if __name__ == "__main__":
         file.write(final_content_step3)
 
     time.sleep(5)
-    page.fill('input.ipt-search', 'java')
+    page.fill('input.ipt-search', '机器人')
     page.click('button[ka="search_box_index"]')
 
     time.sleep(5)
