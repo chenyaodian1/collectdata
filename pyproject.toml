@@ -6,7 +6,13 @@ requires-python = ">=3.12"
 dependencies = [
     "beautifulsoup4>=4.15.0",
     "cloakbrowser>=0.5.10",
+    "datetime>=6.0",
+    "langchain>=1.4.2",
+    "langchain-community==0.4.2",
+    "langchain-openai>=1.6.3",
+    "langchain-openrouter>=0.2.9",
     "playwright>=1.62.0",
     "pymysql>=1.2.0",
+    "python-dotenv>=1.2.3",
     "requests>=2.34.2",
 ]

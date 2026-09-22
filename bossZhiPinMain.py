@@ -271,6 +271,7 @@ if __name__ == "__main__":
 
     # 等待主页加载完成
     page.wait_for_load_state("domcontentloaded")
+    time.sleep(10)
 
     page.on("request", handle_request)
     page.on("response", handle_response)
@@ -317,7 +318,7 @@ if __name__ == "__main__":
         file.write(final_content_step3)
 
     time.sleep(5)
-    page.fill('input.ipt-search', '机器人')
+    page.fill('input.ipt-search', 'java')
     page.click('button[ka="search_box_index"]')
 
     time.sleep(5)

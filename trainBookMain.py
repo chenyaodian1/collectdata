@@ -1,4 +1,4 @@
-# 这是一个示例 Python 脚本。
+# -*- coding: utf-8 -*-
 import re
 import sys
 import traceback
@@ -13,7 +13,8 @@ import os
 import time
 from bs4 import BeautifulSoup
 import requests
-import pymysql
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+os.environ['PYTHONUTF8'] = '1'
 STATE_FILE = "boss_state.json"
 
 captured_jobs = []
@@ -255,13 +256,28 @@ def insertJobData():
         cursor.close()
         conn.close()
 
-
 def is_number_regex(s):
     # 匹配可选的正负号、整数或小数部分、以及可选的科学计数法
     pattern = r'^[-+]?([0-9]+|[0-9]*\.[0-9]+)([eE][-+]?[0-9]+)?$'
     return re.fullmatch(pattern, s) is not None
 
 if __name__ == "__main__":
+    args = sys.argv[1:]
+    if len(args) < 4:
+        print("输入参数不正确")
+        sys.exit(1)
+    startStation = args[0]
+    print(startStation)
+    endStation = args[1]
+    print(endStation)
+    dateTime = args[2]
+    sitType = args[3]
+    startTime = None
+    endTime = None
+    if len(args) >= 5:
+      startTime = "08:45"
+    if len(args) >= 6:
+      endTime = "19:00"
     # 1. 定义一个本地文件夹路径，用于持久化保存浏览器状态（Cookie、指纹等）
     PROFILE_DIR = "./12306_profile"
 
@@ -283,8 +299,11 @@ if __name__ == "__main__":
     else:
         print("检测到有效的登录状态，已自动登录！")
 
+
     # 5. 跳转到个人中心验证状态
     time.sleep(10)
+    page.wait_for_load_state("networkidle")
+
     getNum = 0
     isFirstAccess = True
     while True:
@@ -303,26 +322,26 @@ if __name__ == "__main__":
      print("休眠结束，继续执行后续代码。")
      if isFirstAccess:
       page.goto("https://kyfw.12306.cn/otn/leftTicket/init")
-      page.wait_for_load_state("domcontentloaded")
+      page.wait_for_load_state("networkidle")
 
      #final_content_step1 = page.content()
      #with open("12306_page_step1.html", "w", encoding="utf-8") as file:
       #file.write(final_content_step1)
      if isFirstAccess and getNum <= 0:
       page.mouse.move(600, 600)
-      page.fill('#fromStationText', '广州')
+      page.fill('#fromStationText', startStation)
       page.evaluate("document.activeElement.blur()")
-      time.sleep(1)
+      #time.sleep(1)
       page.mouse.move(600, 600)
-      page.fill('#toStationText', '武汉')
+      page.fill('#toStationText', endStation)
       page.evaluate("document.activeElement.blur()")
-      page.fill('#train_date', '2026-09-28')
+      page.fill('#train_date', dateTime)
       page.evaluate("document.activeElement.blur()")
       page.mouse.move(600, 600)
-
      page.click("#query_ticket")
+
+     page.wait_for_load_state("networkidle")
      time.sleep(1)
-     page.wait_for_load_state("domcontentloaded")
 
      #final_content_step2 = page.content()
      #with open("12306_page_step2.html", "w", encoding="utf-8") as file:
@@ -331,20 +350,37 @@ if __name__ == "__main__":
      rows = page.query_selector_all("#queryLeftTable tr")
      for row in rows:
         train_link = row.query_selector("a.number")
+        start_t_node =  row.query_selector("strong.start-t")
+        if start_t_node is None:
+            continue
+        start_t = start_t_node.inner_text().strip()
+
+        if startTime and start_t < startTime:
+            continue
+        if endTime and start_t > endTime:
+            continue
         if not train_link:
             continue
         train_number = train_link.inner_text().strip()
-        hard_sleep_element = row.query_selector("td:nth-child(8)")
-
+        hard_sleep_element = None
+        if sitType == "1":
+            hard_sleep_element = row.query_selector("td:nth-child(5)")
+        elif sitType == "2":
+            hard_sleep_element = row.query_selector("td:nth-child(8)")
+        elif sitType == "3":
+            hard_sleep_element = row.query_selector("td:nth-child(7)")
+        else:
+            print("座位类型不支持")
+            sys.exit()
         # 判断元素是否存在，防止报错
         if hard_sleep_element:
             hardSleepValue = hard_sleep_element.inner_text().strip()
             if hardSleepValue == '有' or is_number_regex(hardSleepValue):
-                print(f"{train_number} - {hardSleepValue}")
+                print(f"{train_number} - {hardSleepValue} - {start_t}")
                 td_11 = row.query_selector("td:nth-child(13)")
                 td_11.click()
-                page.wait_for_load_state("domcontentloaded")
-                time.sleep(2)
+                page.wait_for_load_state("networkidle")
+                time.sleep(1)
                 #final_content_step3 = page.content()
                 # open("12306_page_step3.html", "w", encoding="utf-8") as file:
                     #file.write(final_content_step3)
@@ -356,7 +392,7 @@ if __name__ == "__main__":
                     print("乘车人已成功选中！")
                     time.sleep(1)
                     page.click("#submitOrder_id")
-                    page.wait_for_load_state("domcontentloaded")
+                    page.wait_for_load_state("networkidle")
                     time.sleep(1)
                     #final_content_step4 = page.content()
                     #with open("12306_page_step4.html", "w", encoding="utf-8") as file:
@@ -365,7 +401,7 @@ if __name__ == "__main__":
                     page.click("#qr_submit_id")
                     getNum +=1;
                     isFirstAccess = True
-                    page.wait_for_load_state("domcontentloaded")
+                    page.wait_for_load_state("networkidle")
                     time.sleep(1)
                 break
             else:
@@ -373,7 +409,7 @@ if __name__ == "__main__":
      if getNum > 5:
          break
      page.mouse.move(600, 600)
-     time.sleep(1)
+     #time.sleep(1)
 
 
 
